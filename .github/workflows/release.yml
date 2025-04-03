@@ -1,0 +1,85 @@
+name: Auto Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: write # Необходимы права на запись содержимого репозитория (теги, релизы)
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Шаг 1: Проверка кода
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Полная история Git необходима для создания тегов
+
+      - name: Get Go Version from go.mod
+        id: get_go_version
+        run: |
+          GO_VERSION=$(grep -oP 'go \K\d+\.\d+' go.mod)
+          echo "GO_VERSION=${GO_VERSION}" >> $GITHUB_OUTPUT
+
+      # Шаг 3: Настройка среды Go
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ steps.get_go_version.outputs.GO_VERSION }}
+
+      # Шаг 4: Кэширование модулей Go для ускорения сборки
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+      # Шаг 5: Установка зависимостей
+      - name: Install Dependencies
+        run: go mod tidy
+
+      # Шаг 6: Сборка проекта
+      - name: Build
+        run: go build ./...
+
+      # Шаг 7: Запуск тестов
+      - name: Run Tests
+        run: go test ./test -v
+
+      # Шаг 8: Генерация версии тега на основе даты и времени
+      - name: Generate Version Tag
+        id: generate_tag
+        run: |
+          # Базовая версия может быть динамической или статической
+          BASE_VERSION="v0.1.0"
+          # Текущее UTC время в формате YYYYMMDDHHMMSS
+          TIMESTAMP=$(date -u +'%Y%m%d%H%M%S')
+          # Формирование тега версии
+          VERSION_TAG="${BASE_VERSION}-${TIMESTAMP}"
+          # Экспорт переменной для последующих шагов
+          echo "VERSION_TAG=${VERSION_TAG}" >> $GITHUB_OUTPUT
+      # Шаг 9: Создание и пуш тегов в репозиторий
+      - name: Create and Push Tag
+        if: success() && steps.generate_tag.outputs.VERSION_TAG != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=${{ steps.generate_tag.outputs.VERSION_TAG }}
+          echo "Creating tag: $TAG"
+          # Настройка информации о пользователе Git
+          git config user.name "alridev"
+          git config user.email "alridev@outlook.com"
+          # Создание аннотированного тега
+          git tag -a "$TAG" -m "Automated release $TAG"
+          # Обновление удалённого URL с использованием GITHUB_TOKEN для аутентификации
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
+          # Пуш тега в удалённый репозиторий
+          git push origin "$TAG"
