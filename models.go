@@ -3,7 +3,7 @@ package chlib
 // SetterEvent представляет событие для отправки в CH
 type SetterEvent struct {
 	TableName string      `json:"table_name" binding:"required"` // Имя таблицы в CH
-	Data      interface{} `json:"data" binding:"required"`       // Данные для отправки
+	Data      map[string]interface{} `json:"data" binding:"required"`       // Данные для отправки
 }
 
 // SetterRequestBody представляет тело запроса для пакетной отправки
